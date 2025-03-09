@@ -9,5 +9,11 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
-# Conserver les fichiers de données
-!data/vector_store/
+# Ignorer les fichiers de données volumineux
+data/vector_store/
+
+.env
+
+data/structured_data.json
+
+file_contents_log.txt
