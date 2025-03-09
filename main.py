@@ -98,22 +98,21 @@ def initialize_system(config_path: str, verbose: bool = False, skip_indexing: bo
 
     # Initialize indexing service and ensure code is indexed
     from services.indexing_service import IndexingService
+    
+    # Ensure we have a singleton instance of the indexing service
     indexing_service = IndexingService.get_instance(config.to_dict(), knowledge_repo)
-    indexing_service.ensure_code_indexed()
     
-    # Initialize code indexer and ensure codebase is indexed
-    code_indexer = CodeIndexerTool(config.get("code_indexer", {}), knowledge_repo)
-    
-    # Vérifiez le paramètre skip_indexing
+    # Modifier cette partie pour gérer correctement les options d'indexation
     if skip_indexing:
         logger.info("Indexation du code ignorée (--skip-indexing)")
     else:
         try:
-            logger.info("Vérification des modifications du code depuis la dernière indexation...")
-            code_indexer.index_codebase_incrementally(".", force_update=False)
-            logger.info("Indexation incrémentielle terminée")
+            # Utiliser la logique améliorée du service d'indexation
+            indexing_service.ensure_code_indexed(force=False)
         except Exception as e:
+            # Capturer et journaliser les erreurs, mais continuer l'exécution
             logger.error(f"Erreur lors de l'indexation du code: {str(e)}")
+            logger.info("Poursuite de l'exécution malgré l'erreur d'indexation")
     
     # Modify the team_manager config to include tools
     team_manager_config = config.get("team_manager", {})
@@ -131,6 +130,7 @@ def initialize_system(config_path: str, verbose: bool = False, skip_indexing: bo
         "knowledge_repository": knowledge_repo,
         "team_manager": team_manager,
         "agent_coordinator": agent_coordinator,
+        "indexing_service": indexing_service,  # Ajout du service d'indexation aux composants retournés
         "logger": logger
     }
 

@@ -13,8 +13,9 @@ import time
 from typing import Dict, Any, List, Optional, Union
 from datetime import datetime
 
-from langchain_community.vectorstores import Chroma
-from langchain_openai import OpenAIEmbeddings
+# Correct deprecated imports
+from langchain_community.vectorstores import Chroma  
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 
@@ -67,8 +68,7 @@ class KnowledgeRepository:
         
         # Initialize embedding model
         try:
-            # Try to use HuggingFaceEmbeddings instead of OpenAI
-            from langchain.embeddings import HuggingFaceEmbeddings
+            # Use the new import HuggingFaceEmbeddings
             self.embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
             logger.info("Using HuggingFace embeddings")
             
@@ -345,10 +345,8 @@ class KnowledgeRepository:
             # Add to vector store
             self.vector_store.add_documents(docs)
             
-            # Persist the vector store
-            if hasattr(self.vector_store, "persist"):
-                self.vector_store.persist()
-                
+            # Do not use persist() with Chroma 0.4.x as persistence is automatic
+            
             logger.debug(f"Added content to vector store with metadata: {metadata.get('type')}")
             
         except Exception as e:

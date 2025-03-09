@@ -181,7 +181,8 @@ class CodeIndexerTool:
         relative_to: Optional[str] = None,
         include_patterns: Optional[List[str]] = None,
         exclude_patterns: Optional[List[str]] = None,
-        force_update: bool = False
+        force_update: bool = False,
+        last_index_time: Optional[float] = None  # New parameter added
     ) -> Dict[str, Any]:
         """
         Index a codebase incrementally, updating only new or modified files.
@@ -192,6 +193,7 @@ class CodeIndexerTool:
             include_patterns: Optional list of glob patterns to include
             exclude_patterns: Optional list of glob patterns to exclude in addition to exclude_dirs
             force_update: Whether to force update all files regardless of modification time
+            last_index_time: Optional timestamp of last indexing, to override repository lookup
             
         Returns:
             Dictionary with indexing results and statistics
@@ -218,27 +220,48 @@ class CodeIndexerTool:
                 exclude_regexes.append(re.compile(escaped_pattern))
         
         # Get last modification time from knowledge repository
-        last_indexing_time = 0
-        if not force_update and self.knowledge_repository:
+        last_indexing_time = last_index_time or 0  # Use the new parameter if provided
+        if not force_update and not last_indexing_time and self.knowledge_repository:
             # Try to retrieve the last indexing timestamp
             try:
+                # Méthode 1: Rechercher directement par ID
                 indexing_info = self.knowledge_repository.get_external_knowledge("code_indexing_info")
+                
+                # Méthode 2: Tenter de chercher dans tous les external_knowledge
+                if not indexing_info or not isinstance(indexing_info, dict):
+                    all_knowledge = self.knowledge_repository._structured_data.get("external_knowledge", {})
+                    for k_id, k_info in all_knowledge.items():
+                        if k_info.get("source") == "code_indexing_info":
+                            indexing_info = k_info
+                            break
+                
+                # Traiter l'information si on l'a trouvée
                 if indexing_info:
-                    last_indexing_time = indexing_info.get("content", {}).get("last_indexing_time", 0)
+                    # Extraire le timestamp du bon endroit selon la structure
+                    if isinstance(indexing_info, dict):
+                        if "content" in indexing_info:
+                            content = indexing_info.get("content", {})
+                            if isinstance(content, dict) and "last_indexing_time" in content:
+                                last_indexing_time = float(content.get("last_indexing_time", 0))
+                                logger.info(f"Retrieved last indexing time: {datetime.datetime.fromtimestamp(last_indexing_time).isoformat()}")
+                        # Cas alternatif où le contenu est au premier niveau
+                        elif "last_indexing_time" in indexing_info:
+                            last_indexing_time = float(indexing_info.get("last_indexing_time", 0))
+                            logger.info(f"Retrieved last indexing time (alt format): {datetime.datetime.fromtimestamp(last_indexing_time).isoformat()}")
                     
-                    # *** Ajoutez cette vérification pour savoir si une indexation récente a été faite ***
-                    # Si la dernière indexation date de moins de 5 minutes, on saute l'indexation
-                    if time.time() - last_indexing_time < 300:  # 300 secondes = 5 minutes
-                        logger.info(f"Dernière indexation effectuée il y a moins de 5 minutes ({datetime.datetime.fromtimestamp(last_indexing_time).isoformat()}), indexation ignorée.")
-                        return {
-                            "success": True,
-                            "indexed_files": [],
-                            "stats": {"files_indexed": 0, "files_skipped": 0, "files_unchanged": 0, "bytes_indexed": 0}
-                        }
-                    
-                    logger.info(f"Last indexing time: {datetime.datetime.fromtimestamp(last_indexing_time).isoformat()}")
+                    # Vérifier que le timestamp est valide
+                    if last_indexing_time <= 0:
+                        logger.warning("Invalid indexing timestamp found (zero or negative)")
             except Exception as e:
                 logger.warning(f"Could not retrieve last indexing time: {str(e)}")
+        
+        # Log the indexing mode
+        if force_update:
+            logger.info("Forced indexing update requested")
+        elif last_indexing_time > 0:
+            logger.info(f"Incremental indexing using timestamp: {datetime.datetime.fromtimestamp(last_indexing_time).isoformat()}")
+        else:
+            logger.info("No valid indexing timestamp found, performing full indexing")
         
         # Statistics
         stats = {
@@ -284,9 +307,8 @@ class CodeIndexerTool:
                     # Check file modification time
                     file_mtime = os.path.getmtime(file_path)
                     
-                    # ICI EST LE CHANGEMENT CLÉ - on vérifie si le fichier a été modifié
-                    if not force_update and file_mtime <= last_indexing_time:
-                        # File hasn't been modified since last indexing
+                    # Skip if file hasn't been modified since last indexing
+                    if not force_update and last_indexing_time > 0 and file_mtime <= last_indexing_time:
                         stats["files_unchanged"] += 1
                         continue
                     
@@ -298,10 +320,14 @@ class CodeIndexerTool:
                         with open(file_path, 'r', encoding='utf-8') as f:
                             content = f.read()
                     except UnicodeDecodeError:
-                        # Try with a different encoding or skip binary files
-                        logger.warning(f"Skipping file due to encoding issues: {file_path}")
-                        stats["files_skipped"] += 1
-                        continue
+                        try:
+                            # Try with a different encoding
+                            with open(file_path, 'r', encoding='latin-1') as f:
+                                content = f.read()
+                        except Exception:
+                            logger.warning(f"Skipping file due to encoding issues: {file_path}")
+                            stats["files_skipped"] += 1
+                            continue
                     
                     # Update statistics
                     stats["files_indexed"] += 1
@@ -313,34 +339,56 @@ class CodeIndexerTool:
                     stats["by_extension"][ext] += 1
                     
                     # Store in knowledge repository
-                    self.knowledge_repository.store_external_knowledge(
-                        source=rel_path,
-                        content=content,
-                        metadata={
-                            "type": "code_file",
-                            "file_path": rel_path,
-                            "extension": ext,
-                            "size": file_size,
-                            "language": self._get_language_from_extension(ext),
-                            "last_modified": file_mtime
-                        }
-                    )
-                    
-                    indexed_files.append(rel_path)
-                    
+                    try:
+                        self.knowledge_repository.store_external_knowledge(
+                            source=rel_path,
+                            content=content,
+                            metadata={
+                                "type": "code_file",
+                                "file_path": rel_path,
+                                "extension": ext,
+                                "size": file_size,
+                                "language": self._get_language_from_extension(ext),
+                                "last_modified": file_mtime
+                            }
+                        )
+                        
+                        indexed_files.append(rel_path)
+                    except Exception as e:
+                        logger.error(f"Error storing file {rel_path} in knowledge repository: {str(e)}")
+                        stats["files_skipped"] += 1
+                        
                 except Exception as e:
                     logger.error(f"Error processing file {file_path}: {str(e)}")
                     stats["files_skipped"] += 1
         
         # Store the current indexing time
         current_time = time.time()
+        logger.info(f"Storing new indexing timestamp: {datetime.datetime.fromtimestamp(current_time).isoformat()}")
+        
         if self.knowledge_repository:
-            self.knowledge_repository.store_external_knowledge(
-                source="code_indexing_info",
-                content={"last_indexing_time": current_time},
-                metadata={"type": "system_info"}
-            )
-            logger.info(f"Updated indexing timestamp to: {datetime.datetime.fromtimestamp(current_time).isoformat()}")
+            try:
+                # Stocker clairement et explicitement l'horodatage
+                self.knowledge_repository.store_external_knowledge(
+                    source="code_indexing_info",
+                    content={"last_indexing_time": current_time},
+                    metadata={"type": "system_info", "purpose": "indexing_timestamp"}
+                )
+                
+                # Vérification immédiate - récupérer ce qui vient d'être stocké
+                verification = self.knowledge_repository.get_external_knowledge("code_indexing_info")
+                if verification and isinstance(verification, dict) and "content" in verification:
+                    stored_time = verification.get("content", {}).get("last_indexing_time", 0)
+                    if stored_time > 0:
+                        logger.info(f"Verification: successfully stored timestamp {datetime.datetime.fromtimestamp(stored_time).isoformat()}")
+                    else:
+                        logger.warning("Verification: timestamp storage seems to have failed")
+                else:
+                    logger.warning("Verification: could not retrieve stored timestamp")
+            except Exception as e:
+                logger.error(f"Error storing indexing timestamp: {str(e)}")
+        
+        logger.info(f"Indexing complete: {stats['files_indexed']} files indexed, {stats['files_unchanged']} unchanged, {stats['files_skipped']} skipped")
         
         return {
             "success": True,
