@@ -159,6 +159,9 @@ class FileManagerTool:
         Returns:
             Dictionary with status and metadata
         """
+        # DEBUG - Chemin demandé
+        print(f"DEBUG - Chemin demandé: {file_path}")
+        
         # Normalize path
         full_path = self._get_full_path(file_path)
         
@@ -234,6 +237,9 @@ class FileManagerTool:
         Returns:
             Dictionary with status and metadata
         """
+        # DEBUG - Chemin demandé
+        print(f"DEBUG - Chemin demandé: {file_path}")
+        
         # Déterminer le chemin approprié
         if is_application_file:
             # Si c'est un fichier d'application, utiliser le chemin directement (relatif à la racine)
@@ -241,6 +247,14 @@ class FileManagerTool:
         else:
             # Sinon, utiliser le chemin relatif au dossier output
             full_path = self._get_full_path(file_path)
+        
+        # DEBUG - Chemin avant transformation
+        print(f"DEBUG - Chemin avant transformation: {file_path}")
+        
+        transformed_path = self._transform_destination_path(file_path)
+        
+        # DEBUG - Chemin après transformation
+        print(f"DEBUG - Chemin après transformation: {transformed_path}")
         
         try:
             # Ensure the file extension is allowed
@@ -793,3 +807,21 @@ class FileManagerTool:
             File extension without the dot
         """
         return os.path.splitext(file_path)[1].lstrip(".").lower()
+
+    def _transform_destination_path(self, relative_path: str) -> str:
+        """
+        Transform the destination path based on file type and purpose.
+        
+        Args:
+            relative_path: Original relative path
+            
+        Returns:
+            Transformed path appropriate for the application
+        """
+        # Respecter simplement le chemin relatif spécifié par l'agent
+        # Sauf s'il commence explicitement par output/
+        if relative_path.startswith("output/"):
+            return os.path.join(self.output_dir, relative_path[7:])
+        
+        # Désactiver toute redirection automatique vers des dossiers spécifiques
+        return relative_path

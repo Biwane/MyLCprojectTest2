@@ -85,6 +85,8 @@ class AgentCoordinator:
         task_description: str, 
         agent_team: Dict[str, BaseAgent]
     ) -> List[Dict[str, Any]]:
+        logger.debug(f"Available agents for task breakdown: {list(agent_team.keys())}")
+        logger.debug(f"Agent roles: {[(agent_id, agent.role) for agent_id, agent in agent_team.items()]}")
         """
         Break down a task into subtasks that can be assigned to agents.
         
@@ -115,7 +117,7 @@ class AgentCoordinator:
             As the planning agent, break down this task into subtasks that can be assigned to team members.
             For each subtask, specify:
             1. A clear description
-            2. The required skills or role to complete it
+            2. The assigned_agent who should complete it (use one of: {', '.join(agent_team.keys())})
             3. Estimated complexity (low, medium, high)
             4. Any dependencies on other subtasks
             
@@ -294,6 +296,10 @@ class AgentCoordinator:
             HumanMessage(content=f"Main task: {task_description}")
         )
         
+        # Add debug logging for available agents and their roles
+        logger.debug(f"Available agents: {list(agent_team.keys())}")
+        logger.debug(f"Agent roles: {[(agent_id, agent.role) for agent_id, agent in agent_team.items()]}")
+
         # Execute each task in the schedule
         for task_step in task_schedule:
             step_id = task_step.get("step_id", "unknown")
@@ -304,6 +310,9 @@ class AgentCoordinator:
             # Process each subtask in this step (these can be executed in parallel)
             for subtask in subtasks:
                 subtask_id = subtask.get("id", "unknown")
+                
+                # Add debug logging for processing subtask
+                logger.debug(f"Processing subtask {subtask_id}: {subtask}")
                 
                 # MODIFICATION: Vérifier plusieurs champs pour trouver l'agent assigné
                 agent_id = None
