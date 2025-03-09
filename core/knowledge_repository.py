@@ -67,7 +67,10 @@ class KnowledgeRepository:
         
         # Initialize embedding model
         try:
-            self.embeddings = OpenAIEmbeddings(model=self.embedding_model)
+            # Try to use HuggingFaceEmbeddings instead of OpenAI
+            from langchain.embeddings import HuggingFaceEmbeddings
+            self.embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
+            logger.info("Using HuggingFace embeddings")
             
             # Check if vector store exists
             if os.path.exists(os.path.join(vector_store_dir, "chroma.sqlite3")):

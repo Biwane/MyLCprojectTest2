@@ -68,5 +68,75 @@
       }
     ],
     "additional_context": "The team should be familiar with the latest trends in AI and have experience with Langchain to effectively finalize the application."
+  },
+  "team_code_evolution": {
+    "id": "team_code_evolution",
+    "name": "Code Evolution Team",
+    "description": "Une équipe spécialisée dans l'évolution et l'amélioration de la codebase",
+    "created_at": "2025-03-09T10:50:00.000Z",
+    "task_description": "Améliorer l'application Team Agents en implémentant de nouvelles fonctionnalités",
+    "agent_specs": [
+      {
+        "role": "code_analyst",
+        "specialization": "code_analysis",
+        "importance": 10,
+        "description": "Analyse le code pour comprendre sa structure et proposer des modifications",
+        "required_skills": [
+          "code analysis",
+          "refactoring",
+          "software architecture"
+        ],
+        "background_info": null
+      },
+      {
+        "role": "research",
+        "specialization": "software_development",
+        "importance": 8,
+        "description": "Recherche les meilleures pratiques et solutions techniques pour les modifications demandées",
+        "required_skills": [
+          "technical research",
+          "documentation analysis",
+          "pattern recognition"
+        ],
+        "background_info": null
+      },
+      {
+        "role": "planner",
+        "specialization": "software_design",
+        "importance": 9,
+        "description": "Crée un plan détaillé des modifications à apporter",
+        "required_skills": [
+          "software design",
+          "task planning",
+          "dependency management"
+        ],
+        "background_info": null
+      },
+      {
+        "role": "executor",
+        "specialization": "code_implementation",
+        "importance": 10,
+        "description": "Implémente les modifications de code requises",
+        "required_skills": [
+          "code implementation",
+          "testing",
+          "debugging"
+        ],
+        "background_info": null
+      },
+      {
+        "role": "reviewer",
+        "specialization": "code_review",
+        "importance": 7,
+        "description": "Évalue et valide les modifications proposées",
+        "required_skills": [
+          "code review",
+          "quality assurance",
+          "performance analysis"
+        ],
+        "background_info": null
+      }
+    ],
+    "additional_context": "Cette équipe est spécialisée dans l'amélioration et l'évolution de la codebase de l'application Team Agents."
   }
 }

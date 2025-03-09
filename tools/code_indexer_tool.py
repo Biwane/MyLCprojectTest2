@@ -77,7 +77,14 @@ class CodeIndexerTool:
         
         # Compile exclude patterns
         exclude_patterns = exclude_patterns or []
-        exclude_regexes = [re.compile(pattern) for pattern in exclude_patterns]
+        exclude_regexes = []
+        for pattern in exclude_patterns:
+            try:
+                exclude_regexes.append(re.compile(pattern))
+            except re.error:
+                # Échapper les caractères spéciaux pour les motifs problématiques
+                escaped_pattern = re.escape(pattern)
+                exclude_regexes.append(re.compile(escaped_pattern))
         
         # Statistics
         stats = {

@@ -25,13 +25,31 @@ from utils.logging_utils import setup_logging
 def parse_arguments():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description="Create and manage dynamic teams of AI agents.")
-    parser.add_argument("task", type=str, nargs="?", help="The task description for the agent team")
-    parser.add_argument("--config", type=str, default="config.yaml", help="Path to configuration file")
-    parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging")
-    parser.add_argument("--output", "-o", type=str, default="output", help="Output directory for generated files")
+    
+    # Ajouter un sous-parseur pour les différentes commandes
+    subparsers = parser.add_subparsers(dest="command", help="Command to execute")
+    
+    # Commande 'task' pour traiter une tâche générale (comportement par défaut)
+    task_parser = subparsers.add_parser("task", help="Process a general task with agent team")
+    task_parser.add_argument("description", type=str, help="The task description for the agent team")
+    
+    # Commande 'evolve' pour le workflow d'évolution du code
+    evolve_parser = subparsers.add_parser("evolve", help="Evolve the application code")
+    evolve_parser.add_argument("description", type=str, help="Description of the evolution request")
+    
+    # Arguments communs
+    for subparser in [task_parser, evolve_parser]:
+        subparser.add_argument("--config", type=str, default="config.yaml", help="Path to configuration file")
+        subparser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging")
+        subparser.add_argument("--output", "-o", type=str, default="output", help="Output directory for generated files")
+        subparser.add_argument("--use-team", type=str, help="ID of an existing team to use")
+    
+    # Autres arguments généraux
     parser.add_argument("--interactive", "-i", action="store_true", help="Run in interactive mode")
-    parser.add_argument("--use-team", type=str, help="ID of an existing team to use")
     parser.add_argument("--list-teams", action="store_true", help="List all available teams")
+    
+    # Pour maintenir la compatibilité avec l'ancienne interface
+    parser.add_argument("task", type=str, nargs="?", help="The task description for the agent team")
     
     return parser.parse_args()
 
@@ -130,6 +148,40 @@ def process_task(task: str, system_components: Dict[str, Any], team_id: Optional
     # Execute the task with the team
     results = agent_coordinator.execute_task(task, agent_team)
     logger.info("Task execution completed")
+    
+    return results
+
+def process_evolution(description: str, system_components: Dict[str, Any], team_id: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Process an evolution request by analyzing and modifying the application code.
+    
+    Args:
+        description: The evolution request description
+        system_components: Dictionary containing system components
+        team_id: Optional ID of an existing team to use
+    
+    Returns:
+        Dictionary containing the results
+    """
+    logger = system_components["logger"]
+    
+    # Importer le workflow d'évolution
+    from core.evolution_workflow import EvolutionWorkflow
+    
+    # Créer l'instance du workflow d'évolution
+    evolution_workflow = EvolutionWorkflow(
+        config=system_components["config"].to_dict(),
+        team_manager=system_components["team_manager"],
+        agent_coordinator=system_components["agent_coordinator"],
+        knowledge_repository=system_components["knowledge_repository"]
+    )
+    
+    logger.info(f"Processing evolution request: {description}")
+    
+    # Exécuter le workflow d'évolution
+    results = evolution_workflow.execute_evolution(description, team_id)
+    
+    logger.info("Evolution process completed")
     
     return results
 
@@ -245,12 +297,26 @@ def main():
         if args.interactive:
             # Run in interactive mode
             interactive_mode(system_components)
-        elif args.task:
-            # Process a single task from command line
+        elif args.command == "evolve":
+            # Process evolution request
+            results = process_evolution(args.description, system_components, args.use_team)
+            
+            # Display results
+            print("\n--- Evolution Results ---")
+            print(results.get("summary", "No summary available"))
+            
+            if "output_files" in results and results["output_files"]:
+                print("\n--- Generated Files ---")
+                for file_path in results["output_files"]:
+                    print(f"- {file_path}")
+        elif args.command == "task" or args.task:
+            # Process a single task (maintain backward compatibility)
+            task_description = args.description if args.command == "task" else args.task
+            
             if args.use_team:
-                results = process_task(args.task, system_components, args.use_team)
+                results = process_task(task_description, system_components, args.use_team)
             else:
-                results = process_task(args.task, system_components)
+                results = process_task(task_description, system_components)
             
             # Display results
             print("\n--- Results ---")
@@ -261,9 +327,10 @@ def main():
                 for file_path in results["output_files"]:
                     print(f"- {file_path}")
         else:
-            # No task provided, show help
+            # No command or task provided, show help
             print("No task provided. Use --interactive mode or provide a task description.")
-            print("Example: python main.py 'Create a team of Salesforce developers'")
+            print("Example: python main.py task 'Create a team of Salesforce developers'")
+            print("Example: python main.py evolve 'Add support for MySQL database'")
     
     except KeyboardInterrupt:
         logger.info("Operation interrupted by user")

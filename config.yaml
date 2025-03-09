@@ -107,3 +107,32 @@ tools:
   communication:
     max_message_history: 100
     enable_agent_tagging: true
+  code_indexer:
+    supported_extensions:
+      - ".py"
+      - ".js"
+      - ".html"
+      - ".css"
+      - ".java"
+      - ".json"
+      - ".yaml"
+      - ".yml"
+      - ".md"
+      - ".txt"
+    exclude_dirs:
+      - "__pycache__"
+      - "node_modules"
+      - ".git"
+      - "venv"
+      - "env"
+      - ".vscode"
+    max_file_size: 1048576  # 1 MB
+  code_diff:
+    context_lines: 3
+    output_dir: "output/patches"
+
+# Evolution workflow settings
+evolution_workflow:
+  code_root_dir: "."  # Répertoire racine du code à analyser
+  auto_apply_changes: false  # Appliquer automatiquement les modifications
+  create_pull_request: false  # Créer une PR pour les modifications
