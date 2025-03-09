@@ -1,0 +1,109 @@
+# Team Agents Configuration
+
+# General settings
+general:
+  data_dir: "data"
+  output_dir: "output"
+  log_level: "INFO"
+  verbose: true
+
+# LLM settings
+llm:
+  default_model: "gpt-4o"
+  research_model: "gpt-4o"
+  planning_model: "gpt-4o"
+  coordination_model: "gpt-4o"
+  specialist_model: "gpt-4o"
+  execution_model: "gpt-3.5-turbo"
+  review_model: "gpt-4o"
+  default_temperature: 0.2
+  api_request_timeout: 30
+
+# Agent factory settings
+agent_factory:
+  default_model: "gpt-4o"
+  max_iterations: 10
+  verbose: true
+
+# Team manager settings
+team_manager:
+  analysis_model: "gpt-4o"
+  agent_factory:
+    default_model: "gpt-4o"
+
+# Agent coordinator settings
+agent_coordinator:
+  coordination_model: "gpt-4o"
+  max_coordination_retries: 3
+  task_scheduler:
+    max_parallel_tasks: 3
+    prioritize_by_complexity: true
+
+# Knowledge repository settings
+knowledge_repository:
+  data_dir: "data"
+  embedding_model: "text-embedding-3-small"
+  chunk_size: 1000
+  chunk_overlap: 100
+
+# Task scheduler settings
+task_scheduler:
+  max_parallel_tasks: 3
+  prioritize_by_complexity: true
+
+# Agents settings
+agents:
+  base_agent:
+    max_retries: 3
+    retry_delay: 2
+    max_history: 10
+  research_agent:
+    auto_save_results: true
+    max_search_results: 5
+    include_sources: true
+  specialist_agent:
+    domain_knowledge: {}
+    best_practices: []
+  planner_agent:
+    planning_depth: "medium"
+    include_contingencies: true
+  executor_agent:
+    execution_timeout: 120
+    validate_results: true
+  reviewer_agent:
+    review_criteria:
+      - "correctness"
+      - "completeness"
+      - "efficiency"
+      - "maintainability"
+
+# Tools settings
+tools:
+  web_search:
+    search_provider: "tavily"
+    max_results: 5
+  code_generation:
+    language_support:
+      - "python"
+      - "javascript"
+      - "java"
+      - "csharp"
+      - "apex"
+  knowledge_retrieval:
+    max_results: 5
+    similarity_threshold: 0.7
+  file_manager:
+    allowed_extensions:
+      - "txt"
+      - "json"
+      - "yaml"
+      - "yml"
+      - "csv"
+      - "md"
+      - "py"
+      - "js"
+      - "html"
+    max_file_size: 10485760  # 10 MB
+  communication:
+    max_message_history: 100
+    enable_agent_tagging: true
