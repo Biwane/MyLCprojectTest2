@@ -87,6 +87,8 @@ class TaskScheduler:
         
         # Keep track of existing IDs to avoid duplicates
         existing_ids = set()
+        # Keep a map of descriptions to IDs for dependency resolution
+        description_to_id = {}
         
         for i, subtask in enumerate(subtasks):
             # Create a new subtask dictionary with normalized fields
@@ -105,17 +107,21 @@ class TaskScheduler:
             existing_ids.add(subtask_id)
             normalized_subtask["id"] = subtask_id
             
-            # Copy description
+            # Copy description and map it to the ID for dependency resolution
             normalized_subtask["description"] = subtask.get("description", f"Subtask {i}")
+            description_to_id[normalized_subtask["description"]] = subtask_id
             
-            # Normalize assigned agent
-            normalized_subtask["assigned_agent"] = subtask.get("assigned_agent", "")
+            # Normalize assigned agent - check various possible field names
+            for agent_field in ["assigned_agent", "required_skills_or_role", "role"]:
+                if agent_field in subtask and subtask[agent_field]:
+                    normalized_subtask["assigned_agent"] = subtask[agent_field]
+                    break
+            if "assigned_agent" not in normalized_subtask:
+                normalized_subtask["assigned_agent"] = ""
             
-            # Normalize dependencies
-            dependencies = subtask.get("dependencies", [])
-            if isinstance(dependencies, str):
-                dependencies = [dependencies]
-            normalized_subtask["dependencies"] = dependencies
+            # Normalize dependencies - store original dependencies for later resolution
+            normalized_subtask["original_dependencies"] = subtask.get("dependencies", [])
+            normalized_subtask["dependencies"] = []
             
             # Normalize complexity
             complexity_map = {"low": 1, "medium": 2, "high": 3}
@@ -128,10 +134,29 @@ class TaskScheduler:
             
             # Copy any additional fields
             for key, value in subtask.items():
-                if key not in normalized_subtask:
+                if key not in normalized_subtask and key != "dependencies":
                     normalized_subtask[key] = value
             
             normalized.append(normalized_subtask)
+        
+        # Resolve dependencies by description after all subtasks are processed
+        for subtask in normalized:
+            original_deps = subtask.get("original_dependencies", [])
+            resolved_deps = []
+            
+            for dep in original_deps:
+                if dep in description_to_id:
+                    # If the dependency matches a description, use its ID
+                    resolved_deps.append(description_to_id[dep])
+                elif dep in existing_ids:
+                    # If it's already an ID, use it directly
+                    resolved_deps.append(dep)
+                # Otherwise, skip this dependency as it can't be resolved
+            
+            subtask["dependencies"] = resolved_deps
+            # Remove the original_dependencies field
+            if "original_dependencies" in subtask:
+                del subtask["original_dependencies"]
         
         return normalized
     
@@ -462,3 +487,45 @@ class TaskScheduler:
                 visualization.append(f"  - {subtask_id}: {description} (Agent: {agent})")
         
         return "\n".join(visualization)
+
+    def _execute_scheduled_tasks(self, schedule: List[Dict[str, Any]], agent_team: Dict[str, Any]):
+        """
+        Execute the scheduled tasks using the available agent team.
+        
+        Args:
+            schedule: Execution schedule
+            agent_team: Dictionary of agent IDs to agent instances
+        """
+        for step in schedule:
+            for subtask in step["subtasks"]:
+                # MODIFICATION: Vérifier plusieurs champs pour trouver l'agent assigné
+                agent_id = None
+                
+                # Champs possibles pour l'assignation d'agent
+                possible_fields = ["assigned_agent", "required_skills_or_role", "role"]
+                
+                # Vérifier chaque champ possible
+                for field in possible_fields:
+                    if field in subtask and subtask[field]:
+                        potential_id = subtask[field]
+                        
+                        # Vérifier si c'est directement un ID d'agent
+                        if potential_id in agent_team:
+                            agent_id = potential_id
+                            break
+                        
+                        # Sinon, chercher un agent par son rôle
+                        for ag_id, agent in agent_team.items():
+                            if agent.role == potential_id:
+                                agent_id = ag_id
+                                break
+                        
+                        # Si on a trouvé un agent, sortir de la boucle
+                        if agent_id:
+                            break
+                
+                if agent_id:
+                    agent = agent_team[agent_id]
+                    agent.execute_task(subtask)
+                else:
+                    logger.warning(f"No suitable agent found for subtask {subtask['id']}")

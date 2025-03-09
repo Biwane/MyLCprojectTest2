@@ -29,68 +29,68 @@ For each agent, specify:
 - Required skills
 
 Format your response as a valid JSON object with the following structure:
-{{
+{
   "team_name": "A descriptive name for the team",
   "team_goal": "The primary goal of this team",
   "required_agents": [
-    {{
+    {
       "role": "role_name",
       "specialization": "domain_specific_expertise",
       "importance": integer_value,
       "description": "Brief description of this agent's responsibilities",
       "required_skills": ["skill1", "skill2", ...]
-    }},
+    },
     // More agents as needed
   ],
   "additional_context": "Any additional context or considerations"
-}}
+}
 
 {format_instructions}
 """
 
 # Task breakdown prompt
 TASK_BREAKDOWN_PROMPT = """
-You are a professional task planning system that breaks down complex tasks into manageable subtasks.
+Vous êtes un professionnel de la planification de tâches qui décompose les tâches complexes en sous-tâches gérables.
 
-Task Description:
+Description de la tâche:
 {task_description}
 
-Your job is to decompose this task into a series of subtasks that can be assigned to our team of AI agents.
-Each subtask should be clear, focused, and accomplishable by a single agent.
+Votre travail consiste à décomposer cette tâche en une série de sous-tâches qui peuvent être assignées à notre équipe d'agents IA.
+Chaque sous-tâche doit être claire, ciblée et réalisable par un seul agent.
 
-Available Agents:
+Agents disponibles:
 {available_agents}
 
-For each subtask, provide:
-1. A clear description
-2. The agent it should be assigned to (from the list above)
-3. The complexity level (low, medium, high)
-4. Dependencies on other subtasks (if any)
+Pour chaque sous-tâche, fournissez:
+1. Une description claire
+2. L'agent à qui elle doit être assignée (parmi la liste ci-dessus)
+3. Le niveau de complexité (faible, moyen, élevé)
+4. Les dépendances avec d'autres sous-tâches (le cas échéant)
 
-Format your response as a JSON array of subtask objects:
+Formatez votre réponse sous forme de tableau JSON de sous-tâches:
 [
-  {{
+  {
     "id": "subtask_1",
-    "description": "Description of the first subtask",
+    "description": "Description de la première sous-tâche",
     "assigned_agent": "agent_id",
     "complexity": "medium",
     "dependencies": []
-  }},
-  {{
+  },
+  {
     "id": "subtask_2",
-    "description": "Description of the second subtask",
+    "description": "Description de la deuxième sous-tâche",
     "assigned_agent": "agent_id",
     "complexity": "high",
     "dependencies": ["subtask_1"]
-  }},
-  // More subtasks as needed
+  },
+  // Plus de sous-tâches si nécessaire
 ]
 
-Ensure that the task breakdown:
-- Covers all aspects of the main task
-- Respects logical dependencies between subtasks
-- Distributes work evenly among available agents
-- Specifies clear success criteria for each subtask
+Assurez-vous que la décomposition des tâches:
+- Couvre tous les aspects de la tâche principale
+- Respecte les dépendances logiques entre les sous-tâches
+- Répartit le travail équitablement entre les agents disponibles
+- Spécifie des critères de réussite clairs pour chaque sous-tâche
 """
 
 # Result synthesis prompt

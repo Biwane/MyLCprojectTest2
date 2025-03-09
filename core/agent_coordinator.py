@@ -309,7 +309,7 @@ class AgentCoordinator:
                 agent_id = None
                 
                 # Champs possibles pour l'assignation d'agent
-                possible_fields = ["assigned_agent", "required_role", "required_skills_or_role"]
+                possible_fields = ["assigned_agent", "required_skills_or_role", "role"]
                 
                 # Vérifier chaque champ possible
                 for field in possible_fields:
