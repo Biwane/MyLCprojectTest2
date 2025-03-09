@@ -215,6 +215,87 @@ class FileManagerTool:
                 "metadata": {}
             }
     
+    def write_app_file(
+        self, 
+        file_path: str, 
+        content: Union[str, Dict, List], 
+        is_application_file: bool = False,
+        create_dirs: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Write content to a file with special handling for application files vs output files.
+        
+        Args:
+            file_path: Path to write the file to
+            content: Content to write to the file
+            is_application_file: Whether this is a core application file (not in output directory)
+            create_dirs: Whether to create parent directories if they don't exist
+            
+        Returns:
+            Dictionary with status and metadata
+        """
+        # Déterminer le chemin approprié
+        if is_application_file:
+            # Si c'est un fichier d'application, utiliser le chemin directement (relatif à la racine)
+            full_path = os.path.abspath(file_path)
+        else:
+            # Sinon, utiliser le chemin relatif au dossier output
+            full_path = self._get_full_path(file_path)
+        
+        try:
+            # Ensure the file extension is allowed
+            file_extension = self._get_file_extension(full_path)
+            if file_extension not in self.allowed_extensions:
+                return {
+                    "success": False,
+                    "error": f"File extension '{file_extension}' not allowed",
+                    "metadata": {}
+                }
+            
+            # Create parent directories if needed
+            if create_dirs:
+                os.makedirs(os.path.dirname(full_path), exist_ok=True)
+            
+            # Détermine le mode d'écriture selon le type
+            if isinstance(content, (dict, list)) and file_extension == "json":
+                with open(full_path, 'w', encoding='utf-8') as f:
+                    json.dump(content, f, indent=2)
+            elif isinstance(content, (dict, list)) and file_extension in ["yaml", "yml"]:
+                with open(full_path, 'w', encoding='utf-8') as f:
+                    yaml.dump(content, f)
+            elif isinstance(content, list) and file_extension == "csv":
+                with open(full_path, 'w', encoding='utf-8', newline="") as f:
+                    writer = csv.writer(f)
+                    writer.writerows(content)
+            else:
+                # Default to text
+                with open(full_path, 'w', encoding='utf-8') as f:
+                    f.write(str(content))
+            
+            # Get file metadata
+            file_size = os.path.getsize(full_path)
+            metadata = {
+                "path": file_path,
+                "size": file_size,
+                "extension": file_extension,
+                "is_application_file": is_application_file,
+                "last_modified": datetime.datetime.fromtimestamp(os.path.getmtime(full_path)).isoformat()
+            }
+            
+            logger.debug(f"Successfully wrote to file: {file_path}")
+            return {
+                "success": True,
+                "metadata": metadata
+            }
+            
+        except Exception as e:
+            logger.error(f"Error writing to file {file_path}: {str(e)}")
+            return {
+                "success": False,
+                "error": f"Error writing to file: {str(e)}",
+                "metadata": {"is_application_file": is_application_file}
+            }
+
     def create_directory(self, dir_path: str) -> Dict[str, Any]:
         """
         Create a directory.

@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 from core.team_manager import TeamManager
 from core.agent_coordinator import AgentCoordinator
 from core.knowledge_repository import KnowledgeRepository
+from core.evolution_workflow import EvolutionWorkflow
 
 # Utils
 from utils.config import Config
@@ -153,35 +154,59 @@ def process_task(task: str, system_components: Dict[str, Any], team_id: Optional
 
 def process_evolution(description: str, system_components: Dict[str, Any], team_id: Optional[str] = None) -> Dict[str, Any]:
     """
-    Process an evolution request by analyzing and modifying the application code.
+    Process an evolution request.
     
     Args:
         description: The evolution request description
-        system_components: Dictionary containing system components
+        system_components: System components dictionary
         team_id: Optional ID of an existing team to use
-    
+        
     Returns:
-        Dictionary containing the results
+        Dictionary with evolution results
     """
     logger = system_components["logger"]
-    
-    # Importer le workflow d'évolution
-    from core.evolution_workflow import EvolutionWorkflow
-    
-    # Créer l'instance du workflow d'évolution
-    evolution_workflow = EvolutionWorkflow(
-        config=system_components["config"].to_dict(),
-        team_manager=system_components["team_manager"],
-        agent_coordinator=system_components["agent_coordinator"],
-        knowledge_repository=system_components["knowledge_repository"]
-    )
+    knowledge_repository = system_components["knowledge_repository"]
+    team_manager = system_components["team_manager"]
+    agent_coordinator = system_components["agent_coordinator"]
+    config = system_components["config"]
     
     logger.info(f"Processing evolution request: {description}")
     
-    # Exécuter le workflow d'évolution
+    # Create an evolution workflow instance
+    evolution_workflow = EvolutionWorkflow(
+        config=config.to_dict(),
+        team_manager=team_manager,
+        agent_coordinator=agent_coordinator,
+        knowledge_repository=knowledge_repository
+    )
+    
+    # Execute the evolution with the workflow
     results = evolution_workflow.execute_evolution(description, team_id)
     
-    logger.info("Evolution process completed")
+    # Check if there were generated files
+    generated_files = results.get("generated_files", [])
+    if generated_files:
+        print("\n--- Fichiers générés et intégrés ---")
+        
+        # Regrouper par type (code, documentation)
+        code_files = [f for f in generated_files if not f.get("path", "").startswith(evolution_workflow.output_dir)]
+        doc_files = [f for f in generated_files if f.get("path", "").startswith(evolution_workflow.output_dir)]
+        
+        if code_files:
+            print("\nFichiers de code ajoutés à l'application:")
+            for file_info in code_files:
+                file_path = file_info.get("path", "")
+                file_status = file_info.get("status", "")
+                print(f"- {file_path} ({file_status})")
+        
+        if doc_files:
+            print("\nDocumentation générée:")
+            for file_info in doc_files:
+                file_path = file_info.get("path", "")
+                file_status = file_info.get("status", "")
+                print(f"- {file_path} ({file_status})")
+    else:
+        print("\nAucun fichier n'a été généré ou approuvé durant cette évolution.")
     
     return results
 
