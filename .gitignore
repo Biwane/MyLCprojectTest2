@@ -1,0 +1,13 @@
+# Ignorer l'environnement virtuel
+venv/
+
+# Ignorer les fichiers compilés Python
+*.pyc
+__pycache__/
+
+# Ignorer les fichiers spécifiques à un système d'exploitation
+.DS_Store
+Thumbs.db
+
+# Conserver les fichiers de données
+!data/vector_store/
