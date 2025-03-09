@@ -12,12 +12,14 @@ import json
 import sys  # Pour l'interaction avec stdin/stdout
 from typing import Dict, Any, List, Optional, Union
 from pathlib import Path
+import datetime
 
 from core.team_manager import TeamManager
 from core.agent_coordinator import AgentCoordinator
 from core.knowledge_repository import KnowledgeRepository
 from tools.code_indexer_tool import CodeIndexerTool
 from tools.file_manager_tool import FileManagerTool
+from services.indexing_service import IndexingService
 
 logger = logging.getLogger(__name__)
 
@@ -124,30 +126,12 @@ class EvolutionWorkflow:
     
     def _ensure_code_indexed(self):
         """Ensure the code base is indexed for context."""
-        # Check if the code is already indexed in the knowledge repository
-        indexed = False
-        
-        try:
-            # Arbitrary search to check if code is indexed
-            results = self.knowledge_repository.search_knowledge(
-                "code_file",
-                k=1,
-                filter_metadata={"type": "code_file"}
-            )
-            
-            indexed = len(results) > 0
-        except Exception:
-            indexed = False
-        
-        if indexed:
-            logger.info("Base de code déjà indexée, utilisation de l'index existant")
+        indexing_service = IndexingService.get_instance()
+        if indexing_service:
+            # Ne fait rien, car l'indexation a déjà été effectuée dans main.py
+            pass
         else:
-            logger.info("Indexation de la base de code...")
-            try:
-                self.code_indexer.index_codebase(self.code_base_dir)
-                logger.info("Indexation terminée")
-            except Exception as e:
-                logger.error(f"Erreur lors de l'indexation: {str(e)}")
+            logger.warning("Service d'indexation non initialisé")
     
     def _format_evolution_task(self, evolution_request: str) -> str:
         """
@@ -225,7 +209,20 @@ class EvolutionWorkflow:
         for file_info in approved_files:
             # Use the transformed path for the application
             file_path = file_info["app_path"]
-            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            
+            # Ensure file_path is not empty and has a valid directory
+            if not file_path:
+                logger.warning(f"Empty file path detected, using default path")
+                file_path = os.path.join(self.output_dir, f"generated_{int(time.time())}.{file_info.get('type', 'txt')}")
+            
+            # Create directory if it doesn't exist
+            dir_name = os.path.dirname(file_path)
+            if not dir_name:
+                # If there's no directory part, use the output directory
+                file_path = os.path.join(self.output_dir, file_path)
+                dir_name = self.output_dir
+            
+            os.makedirs(dir_name, exist_ok=True)
             
             # Write the file
             try:
@@ -247,7 +244,7 @@ class EvolutionWorkflow:
             logger.info(f"Nombre de fichiers générés: {len(generated_files)}")
             
         return generated_files
-
+    
     def _transform_destination_path(self, relative_path: str) -> str:
         """
         Transform the destination path based on file type and purpose.
@@ -359,113 +356,97 @@ class EvolutionWorkflow:
         """
         files_info = []
         
-        # Patterns to detect Markdown file declaration
-        markdown_patterns = [
-            r"# ([a-zA-Z0-9_\-\.]+\.md)",  # Markdown headers that look like filenames
-            r"```markdown\s*\n(.*?)\n```",  # Markdown code blocks
-            r"(\btop_10_langchain_tools\.md\b)",  # Specific file mentioned
-            r"(\bREADME\.md\b)"  # README.md file
+        # Log pour debug
+        logger.debug(f"Analysing contribution of length: {len(contribution)}")
+        logger.debug(f"First 200 chars: {contribution[:200]}")
+        
+        # Patterns pour détecter divers formats de déclaration de fichiers
+        file_patterns = [
+            # Format standard: ```language\n content \n```
+            r"```(\w+)\s*\n(.*?)\n```",
+            
+            # Format avec nom de fichier spécifié dans un commentaire ou un header
+            r"# File: ([^\n]+)\n```(\w+)\s*\n(.*?)\n```",
+            r"# FICHIER À CRÉER/MODIFIER: ([^\n]+)\n```(\w+)?\s*\n(.*?)\n```",
+            r"Fichier: ([^\n]+)\n```(\w+)?\s*\n(.*?)\n```",
+            
+            # Formats spécifiques pour différents types de fichiers
+            r"# ([a-zA-Z0-9_\-\.\/]+\.py)\n```python\s*\n(.*?)\n```",
+            r"# ([a-zA-Z0-9_\-\.\/]+\.js)\n```javascript\s*\n(.*?)\n```",
+            r"# ([a-zA-Z0-9_\-\.\/]+\.css)\n```css\s*\n(.*?)\n```",
+            r"# ([a-zA-Z0-9_\-\.\/]+\.html)\n```html\s*\n(.*?)\n```",
+            r"# ([a-zA-Z0-9_\-\.\/]+\.md)\n```markdown\s*\n(.*?)\n```"
         ]
         
-        # Patterns to detect Python file declaration
-        python_patterns = [
-            r"```python\s*\n# (output/tools/[a-zA-Z0-9_]+\.py)",  # Python file header comments
-            r"# (output/tools/[a-zA-Z0-9_]+\.py)",  # Python file header outside code blocks
-            r"output/tools/([a-zA-Z0-9_]+)\.py"  # Python file paths
-        ]
-        
-        # Check for our specific target files first
-        if "top_10_langchain_tools.md" in contribution:
-            # Try to extract the content between markdown blocks
-            import re
-            markdown_content = ""
-            
-            # Look for markdown blocks
-            md_matches = re.findall(r"```markdown\s*\n(.*?)\n```", contribution, re.DOTALL)
-            if md_matches:
-                for match in md_matches:
-                    if "# Top 10 Langchain Tools" in match:
-                        markdown_content = match
-                        break
-            
-            if not markdown_content:
-                # Try another approach - find sections between specified strings
-                sections = contribution.split("\n\n")
-                for i, section in enumerate(sections):
-                    if "top_10_langchain_tools.md" in section:
-                        # Try to find the content in the next sections
-                        for j in range(i+1, min(i+5, len(sections))):
-                            if j < len(sections) and "# Top 10 Langchain Tools" in sections[j]:
-                                markdown_content = sections[j]
-                                break
-            
-            if markdown_content:
-                files_info.append({
-                    "relative_path": "top_10_langchain_tools.md",
-                    "content": markdown_content,
-                    "type": "markdown"
-                })
-        
-        # Look for README.md
-        if "README.md" in contribution:
-            import re
-            readme_content = ""
-            
-            # Look for markdown blocks that contain README content
-            md_matches = re.findall(r"```markdown\s*\n(.*?)\n```", contribution, re.DOTALL)
-            if md_matches:
-                for match in md_matches:
-                    if "# Integrating Langchain Tools" in match:
-                        readme_content = match
-                        break
-            
-            if not readme_content:
-                # Try another approach - find sections between specified strings
-                start_marker = "Here's the content for the `README.md`:"
-                if start_marker in contribution:
-                    start_idx = contribution.find(start_marker) + len(start_marker)
-                    end_idx = contribution.find("```", start_idx + 1)
-                    if end_idx > start_idx:
-                        content_between = contribution[start_idx:end_idx].strip()
-                        if content_between:
-                            readme_content = content_between
-            
-            if readme_content:
-                files_info.append({
-                    "relative_path": "README.md",
-                    "content": readme_content,
-                    "type": "markdown"
-                })
-        
-        # Look for Python tool implementations
-        python_files = {}
+        # Analyser la contribution avec les différents patterns
         import re
         
-        # Find Python code blocks
-        py_blocks = re.findall(r"```python\s*\n(.*?)\n```", contribution, re.DOTALL)
-        for block in py_blocks:
-            # Look for class definitions or file comments
-            for prefix in ["class ", "# output/tools/"]:
-                if prefix in block:
-                    lines = block.split("\n")
-                    for line in lines:
-                        if prefix == "class " and line.strip().startswith(prefix):
-                            # Extract class name
-                            class_name = line.strip()[len(prefix):].split("(")[0].split(":")[0].strip()
-                            python_files[class_name] = block
-                        elif prefix == "# output/tools/" and line.strip().startswith(prefix):
-                            # Extract filename
-                            filename = line.strip()[len(prefix):].strip()
-                            class_name = os.path.splitext(filename)[0]
-                            python_files[class_name] = block
+        # Chercher d'abord les formats avec nom de fichier explicite
+        for pattern in file_patterns[1:]:  # Tous sauf le premier pattern
+            matches = re.findall(pattern, contribution, re.DOTALL)
+            if matches:
+                for match in matches:
+                    if len(match) == 3:  # Formats avec nom de fichier, langage et contenu
+                        file_path, language, content = match
+                        ext = os.path.splitext(file_path)[1][1:] if '.' in file_path else language
+                    elif len(match) == 2:  # Formats avec nom de fichier et contenu
+                        file_path, content = match
+                        ext = os.path.splitext(file_path)[1][1:] if '.' in file_path else "txt"
+                    else:
+                        continue
+                    
+                    # Nettoyer le chemin du fichier
+                    file_path = file_path.strip()
+                    
+                    # Ajouter l'information du fichier
+                    files_info.append({
+                        "relative_path": file_path,
+                        "content": content,
+                        "type": ext
+                    })
+                    logger.debug(f"Extracted file: {file_path} ({len(content)} chars)")
         
-        # Create file info for each Python file
-        for class_name, content in python_files.items():
-            os.makedirs(os.path.join(self.output_dir, "tools"), exist_ok=True)
-            files_info.append({
-                "relative_path": f"tools/{class_name}.py",
-                "content": content,
-                "type": "python"
-            })
+        # Si aucun fichier n'a été trouvé avec les patterns explicites, utiliser le pattern simple
+        if not files_info:
+            code_blocks = re.findall(file_patterns[0], contribution, re.DOTALL)
+            for i, (language, content) in enumerate(code_blocks):
+                # Générer un nom de fichier basé sur le langage
+                ext = language.lower() if language else "txt"
+                file_name = f"generated_file_{i+1}.{ext}"
+                
+                files_info.append({
+                    "relative_path": file_name,
+                    "content": content,
+                    "type": ext
+                })
+                logger.debug(f"Extracted unnamed file: {file_name} ({len(content)} chars)")
         
+        # Si toujours pas de fichiers, chercher de manière plus agressive
+        if not files_info:
+            # Chercher des blocs de texte qui ressemblent à du code
+            sections = contribution.split("\n\n")
+            for section in sections:
+                if len(section) > 100 and (
+                    "def " in section or 
+                    "class " in section or 
+                    "function " in section or 
+                    "import " in section or
+                    "<html>" in section or
+                    "const " in section or
+                    "@media" in section
+                ):
+                    # Deviner le type de fichier
+                    file_type = "py" if "def " in section or "class " in section else "js"
+                    file_type = "html" if "<html>" in section else file_type
+                    file_type = "css" if "@media" in section else file_type
+                    
+                    file_name = f"extracted_code_{len(files_info)+1}.{file_type}"
+                    files_info.append({
+                        "relative_path": file_name,
+                        "content": section,
+                        "type": file_type
+                    })
+                    logger.debug(f"Aggressively extracted file: {file_name} ({len(section)} chars)")
+        
+        logger.info(f"Total files extracted from contribution: {len(files_info)}")
         return files_info

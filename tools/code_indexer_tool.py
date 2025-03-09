@@ -10,6 +10,8 @@ import logging
 from typing import Dict, Any, List, Optional, Union
 import re
 from pathlib import Path
+import time
+import datetime
 
 from core.knowledge_repository import KnowledgeRepository
 
@@ -166,6 +168,179 @@ class CodeIndexerTool:
                 except Exception as e:
                     logger.error(f"Error processing file {file_path}: {str(e)}")
                     stats["files_skipped"] += 1
+        
+        return {
+            "success": True,
+            "indexed_files": indexed_files,
+            "stats": stats
+        }
+    
+    def index_codebase_incrementally(
+        self, 
+        root_dir: str, 
+        relative_to: Optional[str] = None,
+        include_patterns: Optional[List[str]] = None,
+        exclude_patterns: Optional[List[str]] = None,
+        force_update: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Index a codebase incrementally, updating only new or modified files.
+        
+        Args:
+            root_dir: Root directory of the codebase to index
+            relative_to: If provided, file paths will be stored relative to this directory
+            include_patterns: Optional list of glob patterns to include
+            exclude_patterns: Optional list of glob patterns to exclude in addition to exclude_dirs
+            force_update: Whether to force update all files regardless of modification time
+            
+        Returns:
+            Dictionary with indexing results and statistics
+        """
+        if not os.path.isdir(root_dir):
+            return {
+                "success": False,
+                "error": f"Directory not found: {root_dir}",
+                "files_indexed": 0
+            }
+        
+        # Normalize paths
+        root_dir = os.path.abspath(root_dir)
+        base_dir = os.path.abspath(relative_to) if relative_to else root_dir
+        
+        # Compile exclude patterns
+        exclude_patterns = exclude_patterns or []
+        exclude_regexes = []
+        for pattern in exclude_patterns:
+            try:
+                exclude_regexes.append(re.compile(pattern))
+            except re.error:
+                escaped_pattern = re.escape(pattern)
+                exclude_regexes.append(re.compile(escaped_pattern))
+        
+        # Get last modification time from knowledge repository
+        last_indexing_time = 0
+        if not force_update and self.knowledge_repository:
+            # Try to retrieve the last indexing timestamp
+            try:
+                indexing_info = self.knowledge_repository.get_external_knowledge("code_indexing_info")
+                if indexing_info:
+                    last_indexing_time = indexing_info.get("content", {}).get("last_indexing_time", 0)
+                    
+                    # *** Ajoutez cette vérification pour savoir si une indexation récente a été faite ***
+                    # Si la dernière indexation date de moins de 5 minutes, on saute l'indexation
+                    if time.time() - last_indexing_time < 300:  # 300 secondes = 5 minutes
+                        logger.info(f"Dernière indexation effectuée il y a moins de 5 minutes ({datetime.datetime.fromtimestamp(last_indexing_time).isoformat()}), indexation ignorée.")
+                        return {
+                            "success": True,
+                            "indexed_files": [],
+                            "stats": {"files_indexed": 0, "files_skipped": 0, "files_unchanged": 0, "bytes_indexed": 0}
+                        }
+                    
+                    logger.info(f"Last indexing time: {datetime.datetime.fromtimestamp(last_indexing_time).isoformat()}")
+            except Exception as e:
+                logger.warning(f"Could not retrieve last indexing time: {str(e)}")
+        
+        # Statistics
+        stats = {
+            "files_indexed": 0,
+            "files_skipped": 0,
+            "files_unchanged": 0,
+            "bytes_indexed": 0,
+            "by_extension": {}
+        }
+        
+        indexed_files = []
+        
+        # Walk the directory tree
+        for dirpath, dirnames, filenames in os.walk(root_dir):
+            # Skip excluded directories
+            dirnames[:] = [d for d in dirnames if d not in self.exclude_dirs]
+            
+            # Process files
+            for filename in filenames:
+                file_path = os.path.join(dirpath, filename)
+                
+                # Get the extension
+                _, extension = os.path.splitext(filename)
+                
+                # Skip if extension not supported
+                if extension not in self.supported_extensions:
+                    stats["files_skipped"] += 1
+                    continue
+                
+                # Check if file matches exclude patterns
+                if any(regex.search(file_path) for regex in exclude_regexes):
+                    stats["files_skipped"] += 1
+                    continue
+                
+                # Check file size
+                try:
+                    file_size = os.path.getsize(file_path)
+                    if file_size > self.max_file_size:
+                        logger.warning(f"Skipping file due to size limit: {file_path} ({file_size} bytes)")
+                        stats["files_skipped"] += 1
+                        continue
+                    
+                    # Check file modification time
+                    file_mtime = os.path.getmtime(file_path)
+                    
+                    # ICI EST LE CHANGEMENT CLÉ - on vérifie si le fichier a été modifié
+                    if not force_update and file_mtime <= last_indexing_time:
+                        # File hasn't been modified since last indexing
+                        stats["files_unchanged"] += 1
+                        continue
+                    
+                    # Get relative path
+                    rel_path = os.path.relpath(file_path, base_dir)
+                    
+                    # Read the file
+                    try:
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            content = f.read()
+                    except UnicodeDecodeError:
+                        # Try with a different encoding or skip binary files
+                        logger.warning(f"Skipping file due to encoding issues: {file_path}")
+                        stats["files_skipped"] += 1
+                        continue
+                    
+                    # Update statistics
+                    stats["files_indexed"] += 1
+                    stats["bytes_indexed"] += file_size
+                    
+                    ext = extension[1:]  # Remove the dot
+                    if ext not in stats["by_extension"]:
+                        stats["by_extension"][ext] = 0
+                    stats["by_extension"][ext] += 1
+                    
+                    # Store in knowledge repository
+                    self.knowledge_repository.store_external_knowledge(
+                        source=rel_path,
+                        content=content,
+                        metadata={
+                            "type": "code_file",
+                            "file_path": rel_path,
+                            "extension": ext,
+                            "size": file_size,
+                            "language": self._get_language_from_extension(ext),
+                            "last_modified": file_mtime
+                        }
+                    )
+                    
+                    indexed_files.append(rel_path)
+                    
+                except Exception as e:
+                    logger.error(f"Error processing file {file_path}: {str(e)}")
+                    stats["files_skipped"] += 1
+        
+        # Store the current indexing time
+        current_time = time.time()
+        if self.knowledge_repository:
+            self.knowledge_repository.store_external_knowledge(
+                source="code_indexing_info",
+                content={"last_indexing_time": current_time},
+                metadata={"type": "system_info"}
+            )
+            logger.info(f"Updated indexing timestamp to: {datetime.datetime.fromtimestamp(current_time).isoformat()}")
         
         return {
             "success": True,

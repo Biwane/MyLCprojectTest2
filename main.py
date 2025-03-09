@@ -9,6 +9,7 @@ import argparse
 import logging
 from typing import Dict, Any, List, Optional
 import patch_agents
+from tools.code_indexer_tool import CodeIndexerTool
 
 from dotenv import load_dotenv
 
@@ -44,6 +45,8 @@ def parse_arguments():
         subparser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging")
         subparser.add_argument("--output", "-o", type=str, default="output", help="Output directory for generated files")
         subparser.add_argument("--use-team", type=str, help="ID of an existing team to use")
+        # Ajoutez cet argument
+        subparser.add_argument("--skip-indexing", action="store_true", help="Skip code indexing")
     
     # Autres arguments généraux
     parser.add_argument("--interactive", "-i", action="store_true", help="Run in interactive mode")
@@ -55,13 +58,14 @@ def parse_arguments():
     return parser.parse_args()
 
 
-def initialize_system(config_path: str, verbose: bool = False) -> Dict[str, Any]:
+def initialize_system(config_path: str, verbose: bool = False, skip_indexing: bool = False) -> Dict[str, Any]:
     """
     Initialize the system components based on configuration.
     
     Args:
         config_path: Path to the configuration file
         verbose: Whether to enable verbose logging
+        skip_indexing: Whether to skip code indexing
     
     Returns:
         Dictionary containing initialized system components
@@ -91,6 +95,25 @@ def initialize_system(config_path: str, verbose: bool = False) -> Dict[str, Any]
     
     # Initialize core components
     knowledge_repo = KnowledgeRepository(config.get("knowledge_repository", {}))
+
+    # Initialize indexing service and ensure code is indexed
+    from services.indexing_service import IndexingService
+    indexing_service = IndexingService.get_instance(config.to_dict(), knowledge_repo)
+    indexing_service.ensure_code_indexed()
+    
+    # Initialize code indexer and ensure codebase is indexed
+    code_indexer = CodeIndexerTool(config.get("code_indexer", {}), knowledge_repo)
+    
+    # Vérifiez le paramètre skip_indexing
+    if skip_indexing:
+        logger.info("Indexation du code ignorée (--skip-indexing)")
+    else:
+        try:
+            logger.info("Vérification des modifications du code depuis la dernière indexation...")
+            code_indexer.index_codebase_incrementally(".", force_update=False)
+            logger.info("Indexation incrémentielle terminée")
+        except Exception as e:
+            logger.error(f"Erreur lors de l'indexation du code: {str(e)}")
     
     # Modify the team_manager config to include tools
     team_manager_config = config.get("team_manager", {})
@@ -284,11 +307,10 @@ def list_available_teams(system_components: Dict[str, Any]) -> List[Dict[str, An
 
 
 def main():
-    """Main entry point for the application."""
     args = parse_arguments()
     
-    # Initialize system components
-    system_components = initialize_system(args.config, args.verbose)
+    # Initialize system components en passant l'argument skip_indexing
+    system_components = initialize_system(args.config, args.verbose, args.skip_indexing)
     logger = system_components["logger"]
     
     # Create output directory if it doesn't exist
